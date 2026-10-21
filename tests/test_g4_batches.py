@@ -171,7 +171,7 @@ def test_g4_rejects_unattested_excel_workbook_before_stage():
         org, user, doc, row = _fixture(db)
         doc.filename = "monthly_claims.xlsx"
         db.commit()
-        with pytest.raises(BatchConflict, match="sheet classification is not yet attested"):
+        with pytest.raises(BatchConflict, match="trusted claim sheet attestation required"):
             stage(db, user, doc.id)
         assert db.query(ClaimEntry).count() == 0
     engine.dispose()

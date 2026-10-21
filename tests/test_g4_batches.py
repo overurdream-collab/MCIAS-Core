@@ -255,3 +255,27 @@ def test_inputs_first_endpoint_reads_only_own_claim(monkeypatch):
             claims_api.claim_inputs_first(entry.id,authorization=None,db=db)
         assert exc.value.status_code==404
     engine.dispose()
+
+def test_imported_excel_resume_rechecks_approved_scope():
+    """An idempotent completed batch must not accept a mutated approval."""
+    engine=create_engine("sqlite+pysqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    with Session(engine,expire_on_commit=False) as db:
+        org,user,doc,row=_fixture(db)
+        doc.filename="monthly.xlsx"
+        row.locator={"kind":"sheet","index":1,"row":2}
+        job=db.get(IngestionJob,row.job_id)
+        job.manifest={**job.manifest,"claim_sheet_attestation":{
+            "source_sha256":doc.sha256,"job_id":job.id,"approved_by":user.id,
+            "sheets":{"1":"CLAIMS"},"rationale":"synthetic"}}
+        db.commit()
+        batch=stage(db,user,doc.id)
+        assert resume(db,user,batch.id)["status"]=="imported"
+        assert resume(db,user,batch.id)["status"]=="imported"
+        job.manifest={**job.manifest,"claim_sheet_attestation":{
+            **job.manifest["claim_sheet_attestation"],"sheets":{"1":"PAYMENT"}}}
+        db.commit()
+        with pytest.raises(BatchConflict,match="no approved claims worksheets"):
+            resume(db,user,batch.id)
+        assert db.query(ClaimEntry).count()==1
+    engine.dispose()

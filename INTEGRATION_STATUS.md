@@ -59,3 +59,10 @@ The integration branch is a **staging branch**, not a released application.
 - The preflight is read-only and checks explicit sheet scope, row identity, counts, duplicate locators, and normalization. It **does not attest sheet approval** or integrate with G4 persistence. The existing XLSX fail-closed G4 gate stays active; do not bypass it based on a caller-supplied sheet list.
 - Earlier exact-SHA `2206a1aa3010` CI confirmed G1–G7, G8 and G9 success; Enterprise was still running when inspected. New preflight commits require their own CI confirmation.
 - Remaining: independently approved worksheet classification, integration with G4, reference completeness at service date, Shared Audit, human review and G7 end-to-end browser acceptance.
+
+## Worksheet scope contract — 2026-10-22
+- Confirmed all four CI workflows **PASS** on previous SHA `eaefaea6d162eb4428e67a16a93f3cc7f0bda473` (G1–G7, G8, G9, Enterprise). This is not E2E acceptance.
+- Added `mcias/claim_sheet_scope.py` in `8432a3a0583d0b5af0dd4724f1677a1cf274b3df` and seven synthetic contract tests in `f8832f588a196e64519aaee27e8f79fe4a8b3ebe`.
+- Validator requires explicit per-sheet CLAIMS/PAYMENT/SUMMARY/OTHER labels, source SHA, extraction job ID, approver identity, full observed sheet coverage, and clean CAI-01 read-only preflight. Payment and summary rows are excluded from selected claims; malformed/missing scope fails closed.
+- **Security boundary:** the validator does not prove the approver identity or authorization. A protected, auditable approval API and persistent attestation lifecycle are not implemented. Accordingly the XLSX G4 stage gate **remains closed**; no user-supplied manifest may bypass it. No claims totals are computed from unapproved sheets.
+- CI for these two commits is pending verification; the earlier four-workflow green result belongs only to the prior SHA. No main merge, deployment, or original repository edits.

@@ -227,3 +227,31 @@ def test_g4_excel_attestation_change_blocks_resume():
             resume(db,user,batch.id)
         assert db.query(ClaimEntry).count()==0
     engine.dispose()
+
+def test_inputs_first_endpoint_reads_only_own_claim(monkeypatch):
+    """An imported claim exposes six reference statuses, not a financial verdict."""
+    from fastapi import HTTPException
+    from mcias import claims_api
+    engine=create_engine("sqlite+pysqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    with Session(engine,expire_on_commit=False) as db:
+        org,user,doc,row=_fixture(db)
+        batch=stage(db,user,doc.id)
+        resume(db,user,batch.id)
+        entry=db.scalar(select(ClaimEntry))
+        monkeypatch.setattr(claims_api,"_actor",lambda db,auth,permission:user)
+        result=claims_api.claim_inputs_first(entry.id,authorization=None,db=db)
+        assert result["status"]=="HOLD_INPUTS"
+        assert len(result["references"])==6
+        assert result["semantics"]=="DATABASE_EVIDENCE_ONLY_NO_INELIGIBILITY_OR_FINANCIAL_DECISION"
+        assert all(x["status"]=="HOLD" for x in result["references"])
+        other=Organization(name="G3 isolated")
+        stranger=User(username="g3-isolated",password_hash="fixture")
+        db.add_all([other,stranger]);db.flush()
+        stranger.organization_id=other.id
+        db.commit()
+        monkeypatch.setattr(claims_api,"_actor",lambda db,auth,permission:stranger)
+        with pytest.raises(HTTPException) as exc:
+            claims_api.claim_inputs_first(entry.id,authorization=None,db=db)
+        assert exc.value.status_code==404
+    engine.dispose()

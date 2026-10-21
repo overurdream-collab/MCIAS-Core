@@ -52,3 +52,10 @@ The integration branch is a **staging branch**, not a released application.
 - Existing `Pillow>=13,<14` change, XLSX fail-closed gate, and regression test were already present; no duplication or conflicting edits made.
 - Still blocked: attested per-sheet CLAIMS/PAYMENT/SUMMARY classification, full Excel import, eight INPUTS UI, six-reference checks, Shared Audit → G6 → G7, browser E2E and independent runtime acceptance. Fail-closed Excel protection is intentional, not complete import support.
 - Neither `test2` nor `MCIAS-Core/main` has been modified; no merge or deployment.
+
+## CAI-01 isolated preflight reuse — 2026-10-22
+- Imported `mcias/claims_batch_preflight.py` unchanged from original PR #31 HEAD `bd2d1b0c92a5410466217802be936dd469b3b35f`, commit `b8a2b93c09c2308b010eaba43de147440d8cbbca`.
+- Imported its synthetic contract tests `tests/test_cai01_inputs_first_source_contract.py`, commit `ba3c148d4097d736cbe5e7ab42cc7f0216f6f33d`.
+- The preflight is read-only and checks explicit sheet scope, row identity, counts, duplicate locators, and normalization. It **does not attest sheet approval** or integrate with G4 persistence. The existing XLSX fail-closed G4 gate stays active; do not bypass it based on a caller-supplied sheet list.
+- Earlier exact-SHA `2206a1aa3010` CI confirmed G1–G7, G8 and G9 success; Enterprise was still running when inspected. New preflight commits require their own CI confirmation.
+- Remaining: independently approved worksheet classification, integration with G4, reference completeness at service date, Shared Audit, human review and G7 end-to-end browser acceptance.

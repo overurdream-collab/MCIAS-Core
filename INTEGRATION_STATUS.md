@@ -44,3 +44,11 @@ The integration branch is a **staging branch**, not a released application.
 - Adopted the Pillow >=13,<14 dependency range from the existing security patch branch, pending exact-head CI verification.
 - Added a fail-closed gate preventing unclassified Excel workbooks from entering G4 claim batches, with a regression test. **XLSX claim import remains BLOCKED** until an attested per-sheet CLAIMS/PAYMENT/SUMMARY classifier is implemented and tested. This is intentional and must not be represented as complete Excel support.
 - Further integration of PR #25 inputs, Shared Audit, CAI-01, G6/G7 and full browser E2E remains OPEN. No production acceptance, no deployment, no merge.
+
+## Independent verification and continuation — 2026-10-22
+- Resumed from confirmed HEAD `c46e2554b071e95703e64f23b64e2c378972955a`; checked repository tree (339 tracked files), recent commits, and exact-SHA CI jobs before changing anything.
+- Unit CI on that SHA: **344 passed, 19 skipped, 1 failed**. The single failing acceptance-pack test pointed to absent `GATE_STATUS.md` from policy links. G9 release-security failed on the same missing file. Restored the original file verbatim from `test2` main at `b69defa2f621458ef44d790b510840307a81009a` in commit `c3673e445393d0930dffd7c6af96400a2b4d1adb`.
+- On the inspected SHA, PostgreSQL integration **PASS**, G9 PostgreSQL **PASS**, G8 **PASS**, Dependency Audit **PASS**. Enterprise browser-and-contracts job **FAIL**; detailed failure reason still requires confirmation. These are historical results on the inspected SHA, not fresh results for the restoration commit.
+- Existing `Pillow>=13,<14` change, XLSX fail-closed gate, and regression test were already present; no duplication or conflicting edits made.
+- Still blocked: attested per-sheet CLAIMS/PAYMENT/SUMMARY classification, full Excel import, eight INPUTS UI, six-reference checks, Shared Audit → G6 → G7, browser E2E and independent runtime acceptance. Fail-closed Excel protection is intentional, not complete import support.
+- Neither `test2` nor `MCIAS-Core/main` has been modified; no merge or deployment.

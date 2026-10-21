@@ -80,3 +80,10 @@ The integration branch is a **staging branch**, not a released application.
 - `4236e80cf18730466726e777343ddf12f1f530e7`: worksheet approval now checks the original `source_ingested` audit event and refuses same-actor approval or absent provenance. This enforces distinct uploader/reviewer identities in addition to both permissions. It does not replace formal independent security review.
 - `03441dc6b0c1843596d9550f4955379760154def`: synthetic test confirms changing approved sheet labels after G4 staging blocks resume instead of silently importing another sheet.
 - CI on these new commits is not yet verified. Approval audit-log and manifest persistence still need concurrent PostgreSQL verification, and full six-reference audit → Shared Audit → human review → reporting E2E remains open. No merge or deployment.
+
+## INPUTS-FIRST six-family certificate — 2026-10-22
+- Verified all four CI workflows PASS at previous SHA `5b0c4ae89cebe7711d66db5288e542adc582c0af`.
+- Added `mcias/inputs_first_certificate.py` at `2a208035eba89a3df71208ad622973f586b7f42d` and five synthetic tests at `bd71e5d21daf90bd0b0dc608649b9f3e3ef01332`.
+- The read-only certificate enumerates all six reference families, provenance, approval, coverage and temporal validity at service date. Missing beneficiary evidence yields HOLD_INPUTS, **never ineligibility**.
+- IMPORTANT: input evidence is caller-provided and this module is NOT a trusted G3 reference resolver, not a policy authorization, not wired into G5, and not a production-ready integration. Full DB-backed verification and end-to-end audit remain open.
+- CI for these new commits has not yet been confirmed. No main merge, original repo edits, or deployment.

@@ -78,3 +78,19 @@ def test_duplicate_inventory_index_blocks():
         {"index":1,"name":"Other"}]
     with pytest.raises(ValueError,match="unclassified workbook worksheet"):
         validate_sheet_scope(doc,job,records)
+
+def test_source_row_sheet_name_mismatch_blocks():
+    doc,job,records=fixture()
+    job.manifest["worksheets"]=[{"index":1,"name":"Claims"},
+        {"index":2,"name":"Payments"},{"index":3,"name":"Summary"}]
+    records[0].locator["sheet_name"]="Payments"
+    with pytest.raises(ValueError,match="sheet name mismatch"):
+        validate_sheet_scope(doc,job,records)
+
+def test_source_row_sha_mismatch_blocks():
+    doc,job,records=fixture()
+    job.manifest["worksheets"]=[{"index":1,"name":"Claims"},
+        {"index":2,"name":"Payments"},{"index":3,"name":"Summary"}]
+    records[0].locator["source_sha256"]="b"*64
+    with pytest.raises(ValueError,match="fingerprint mismatch"):
+        validate_sheet_scope(doc,job,records)

@@ -21,6 +21,7 @@ class Extraction:
     units_total: int = 0
     units_processed: int = 0
     quarantined: list[dict] = field(default_factory=list)
+    worksheets: list[dict] = field(default_factory=list)
 
     @property
     def complete(self):

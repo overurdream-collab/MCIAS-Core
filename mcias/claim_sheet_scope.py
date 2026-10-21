@@ -26,7 +26,17 @@ def validate_sheet_scope(document, job, records):
     if any(type(k) is not str or not k.isdecimal() or str(int(k)) != k for k in sheets):
         raise ValueError("invalid worksheet index")
     mapped = {int(k): v for k, v in sheets.items()}
-    if set(mapped) != observed or any(v not in VALID_KINDS for v in mapped.values()):
+    inventory = job.manifest.get("worksheets")
+    if inventory is not None:
+        if not isinstance(inventory, list) or not inventory or any(
+            not isinstance(item, dict) or type(item.get("index")) is not int
+            or item["index"] < 1 or not isinstance(item.get("name"), str)
+            for item in inventory):
+            raise ValueError("invalid workbook worksheet inventory")
+        inventory_indexes = [item["index"] for item in inventory]
+        if len(inventory_indexes) != len(set(inventory_indexes)) or set(mapped) != set(inventory_indexes):
+            raise ValueError("unclassified workbook worksheet")
+    if (inventory is None and set(mapped) != observed) or not observed.issubset(set(mapped)) or any(v not in VALID_KINDS for v in mapped.values()):
         raise ValueError("unclassified or invalid worksheet")
     selected = {index for index, kind in mapped.items() if kind == "CLAIMS"}
     if not selected:

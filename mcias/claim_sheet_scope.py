@@ -18,6 +18,8 @@ def validate_sheet_scope(document, job, records):
         raise ValueError("complete sheet classification required")
     if not isinstance(scope.get("approved_by"), str) or not scope["approved_by"].strip():
         raise ValueError("sheet classification approval identity required")
+    if any(not isinstance(r.locator, dict) for r in records):
+        raise ValueError("invalid Excel source locator")
     observed = {r.locator.get("index") for r in records}
     if any(r.locator.get("kind") != "sheet" or type(r.locator.get("index")) is not int for r in records):
         raise ValueError("invalid Excel source locator")

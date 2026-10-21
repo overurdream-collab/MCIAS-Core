@@ -133,3 +133,11 @@ The integration branch is a **staging branch**, not a released application.
 - `cff60d6186506443c4bd99a29948e39060e1e697`: G4 checks attestation against the full workbook inventory when available, not only observed claim rows; legacy G2 manifests without inventory continue existing observed-row validation.
 - `ad5d151a389e97f8cbb0967b5bf4c0a6ef18b7bf`: synthetic tests for mandatory classification of an empty sheet and rejection of duplicate inventory indexes.
 - These newest commits are **not yet verified green** on CI. Workbook sheet names are captured as metadata, but per-claim row locator still contains sheet index, not name; evidence schema and institutional attestation remain incomplete. No merge or deployment.
+
+## G2 source row provenance — 2026-10-22
+- Resumed from `af91946216cef82cc6349375d32b2971ba8a6a21`, PR #1 open/draft/unmerged. On that SHA all four CI workflows were still queued/in progress at inspection; no invented green claim.
+- Inspected `ingestion/orchestrator.py`, `ingestion/provenance.py`, `models_ingestion.py` and G4 scope before edits. Reused existing row locator JSON without adding conflicting schema migration.
+- `9c209cced77a72e7570e4ee5d455dd3080b8fe15`: new Excel extracted rows carry `sheet_name` and `source_sha256` in G2 locator; other source formats unchanged.
+- `f1b62010f72b1a1a6ad28d58e3fc57ab6d01606f`: G4 rejects a supplied row sheet name or SHA that disagrees with the workbook inventory and document fingerprint.
+- `793d78b5e70b4e838a5bc54478e9048432958758`: two synthetic mismatch regression tests.
+- Compatibility caveat: older extracted rows lacking the new optional locator keys remain supported. The row does not yet persist its approval acceptance state; attestation still resides in mutable JSON and needs independent PostgreSQL hardening. New CI not yet verified. No merge/deployment.

@@ -123,3 +123,13 @@ The integration branch is a **staging branch**, not a released application.
 - `8ebb9c3fdc299b438482ce0cd519b88280e4d622`: reject non-dictionary locators with a controlled ValueError before accessing fields.
 - `566b81efa5b34885b3088bc6d760b744f85fe655`: add two synthetic regressions for malformed locator and payment/summary-only workbook. These newest tests have not yet been independently confirmed PASS.
 - Remaining known issues: full workbook sheet inventory (including sheets with zero extracted records) not yet attested; durable DB-enforced approval immutability; six trusted reference families; G5→Shared Audit→G6→G7 end-to-end, PG16/browser acceptance. No main merge or deployment.
+
+## Complete worksheet inventory — 2026-10-22
+- Resumed from `b8cf4b7f7900ef9f806eb1652144f19f98700b7f`; PR #1 remained open/draft/unmerged. At the initial inspection, its four workflows were still running; prior `c905736c6d415d9b74a826c306be2de57c601bbd` had four successful workflows.
+- Inspected the actual G2 parser, extraction schema, manifest, G4 scope validator, and their tests before editing.
+- `26754713baadfb0cf71ed4627f90081f2307c012`: added optional worksheet inventory to G2 extraction schema.
+- `c66791f8f2318b45d50173a4d159728d511e25fd`: captures every workbook worksheet index and name, including empty sheets.
+- `cf6145b5190518cd371efd80949a62aa82495bd5`: records inventory in G2 manifest.
+- `cff60d6186506443c4bd99a29948e39060e1e697`: G4 checks attestation against the full workbook inventory when available, not only observed claim rows; legacy G2 manifests without inventory continue existing observed-row validation.
+- `ad5d151a389e97f8cbb0967b5bf4c0a6ef18b7bf`: synthetic tests for mandatory classification of an empty sheet and rejection of duplicate inventory indexes.
+- These newest commits are **not yet verified green** on CI. Workbook sheet names are captured as metadata, but per-claim row locator still contains sheet index, not name; evidence schema and institutional attestation remain incomplete. No merge or deployment.

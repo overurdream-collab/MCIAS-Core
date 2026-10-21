@@ -80,7 +80,19 @@ def resume(db,actor,batch_id,chunk_size=100):
     batch=db.scalar(select(ClaimBatch).where(ClaimBatch.id==batch_id, ClaimBatch.organization_id==actor.organization_id).with_for_update())
     if batch is None or batch.organization_id!=actor.organization_id:
         raise BatchConflict("batch not accessible")
+    # Revalidate source and worksheet scope even for idempotent completed resumes.
+    # A changed attestation must never be silently accepted.
     if batch.status=="imported":
+        doc=_document(db,actor.organization_id,batch.ingestion_document_id)
+        job=_job(db,actor.organization_id,doc.id)
+        records=db.scalars(select(ExtractedSourceRecord).where(
+            ExtractedSourceRecord.job_id==job.id)).all()
+        try:
+            approved=validate_sheet_scope(doc,job,records)
+        except ValueError as exc:
+            raise BatchConflict(str(exc)) from exc
+        if doc.sha256!=batch.source_sha256 or len(approved)!=batch.record_count:
+            raise BatchConflict("source or approved scope changed")
         return {"batch_id":batch.id,"status":batch.status,"imported_count":batch.imported_count}
     if batch.status not in ("staged","importing","review_required"):
         raise BatchConflict("invalid batch state")

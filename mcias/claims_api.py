@@ -132,3 +132,15 @@ def approve_worksheets(document_id: str, payload: WorksheetApproval,
     db.commit()
     return {"document_id":doc.id,"job_id":job.id,"approved_claim_rows":len(approved),
             "status":"APPROVED_FOR_G4_STAGING"}
+
+@router.get("/entries/{claim_id}/inputs-first")
+def claim_inputs_first(claim_id: str, authorization: str | None=Header(default=None),
+                       db: Session=Depends(get_db)):
+    """Read-only DB-grounded G3 probe; HOLD is not an eligibility decision."""
+    actor=_actor(db,authorization,"claims.read")
+    claim=db.scalar(select(ClaimEntry).where(
+        ClaimEntry.id==claim_id,ClaimEntry.organization_id==actor.organization_id))
+    if claim is None:
+        raise HTTPException(404,"claim not found")
+    from mcias.g3_reference_probe import inspect_g3_claim
+    return inspect_g3_claim(db,claim)

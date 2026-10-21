@@ -161,3 +161,17 @@ def test_g4_cross_tenant_attachment_denied():
         with pytest.raises(BatchConflict,match="not accessible"):
             attach(db,user,entry.id,"unknown")
     engine.dispose()
+
+
+def test_g4_rejects_unattested_excel_workbook_before_stage():
+    """Payment/summary worksheets must never be counted as claims by shape alone."""
+    engine = create_engine("sqlite+pysqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    with Session(engine, expire_on_commit=False) as db:
+        org, user, doc, row = _fixture(db)
+        doc.filename = "monthly_claims.xlsx"
+        db.commit()
+        with pytest.raises(BatchConflict, match="sheet classification is not yet attested"):
+            stage(db, user, doc.id)
+        assert db.query(ClaimEntry).count() == 0
+    engine.dispose()

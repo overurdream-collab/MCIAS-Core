@@ -87,3 +87,9 @@ The integration branch is a **staging branch**, not a released application.
 - The read-only certificate enumerates all six reference families, provenance, approval, coverage and temporal validity at service date. Missing beneficiary evidence yields HOLD_INPUTS, **never ineligibility**.
 - IMPORTANT: input evidence is caller-provided and this module is NOT a trusted G3 reference resolver, not a policy authorization, not wired into G5, and not a production-ready integration. Full DB-backed verification and end-to-end audit remain open.
 - CI for these new commits has not yet been confirmed. No main merge, original repo edits, or deployment.
+
+## DB-grounded G3 probe — 2026-10-22
+- On `5c1199b75eb214da2ea5b4b18f0cdaed0168a4b9`, G1–G7, G8 and G9 were confirmed PASS; Enterprise was still in progress at the initial check.
+- `a06f7abae02a4ef4c0fb515de45cb25ea86fc4d2` introduces read-only tenant-scoped G3 probe for active beneficiary enrollment, approved contract and matching tariff at service date; it never treats record presence as proof that institutional coverage is complete.
+- `3ec39eebf8a03253188020f8855ba61cfc8c52e0` adds a synthetic SQLite tenant-isolation test with different tariff amounts for two organizations, plus explicit HOLD for the remaining three unintegrated families.
+- This probe always returns HOLD_INPUTS, is not yet G5-wired, and does not assert ineligibility. No six-reference completeness attestation, Shared Audit, or E2E approval yet. New commit CI unverified.

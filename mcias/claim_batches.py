@@ -5,6 +5,7 @@ from mcias.models import AuditLog
 from mcias.models_ingestion import IngestionDocument, IngestionJob, ExtractedSourceRecord, QuarantineItem
 from mcias.models_claims import ClaimBatch, ClaimEntry, ClaimAttachment
 from mcias.claim_normalization import normalize, ClaimValidationError
+from mcias.claim_sheet_scope import validate_sheet_scope
 
 class BatchConflict(ValueError):
     pass
@@ -31,16 +32,16 @@ def stage(db,actor,document_id):
         raise BatchConflict("source extraction incomplete or quarantined")
     if db.scalar(select(QuarantineItem.id).where(QuarantineItem.job_id==job.id)):
         raise BatchConflict("source has quarantine items")
-    # XLSX may contain PAYMENT and SUMMARY sheets with claim-shaped columns.
-    # Until sheet-type attestation is implemented, never stage an untrusted workbook.
-    if doc.filename.lower().endswith((".xlsx", ".xlsm", ".xls")):
-        raise BatchConflict("XLSX claims sheet classification is not yet attested")
+    all_records=db.scalars(select(ExtractedSourceRecord).where(ExtractedSourceRecord.job_id==job.id)).all()
+    try:
+        approved_records=validate_sheet_scope(doc,job,all_records)
+    except ValueError as exc:
+        raise BatchConflict(str(exc)) from exc
     existing=db.scalar(select(ClaimBatch).where(ClaimBatch.organization_id==actor.organization_id,
                                                 ClaimBatch.ingestion_document_id==doc.id))
     if existing:
         return existing
-    count=db.scalar(select(func.count()).select_from(ExtractedSourceRecord).where(
-        ExtractedSourceRecord.job_id==job.id))
+    count=len(approved_records)
     if not count:
         raise BatchConflict("source has no extracted records")
     batch=ClaimBatch(organization_id=actor.organization_id,ingestion_document_id=doc.id,
@@ -57,7 +58,12 @@ def preview(db,actor,batch_id,limit=100,offset=0):
         raise BatchConflict("batch not accessible")
     job=_job(db,actor.organization_id,batch.ingestion_document_id)
     records=db.scalars(select(ExtractedSourceRecord).where(ExtractedSourceRecord.job_id==job.id)
-        .order_by(ExtractedSourceRecord.id).offset(offset).limit(limit)).all()
+        .order_by(ExtractedSourceRecord.id)).all()
+    try:
+        records=validate_sheet_scope(_document(db,actor.organization_id,batch.ingestion_document_id),job,records)
+    except ValueError as exc:
+        raise BatchConflict(str(exc)) from exc
+    records=records[offset:offset+limit]
     results=[]
     for record in records:
         try:
@@ -88,6 +94,10 @@ def resume(db,actor,batch_id,chunk_size=100):
         raise BatchConflict("source has quarantine")
     records=db.scalars(select(ExtractedSourceRecord).where(ExtractedSourceRecord.job_id==job.id)
         .order_by(ExtractedSourceRecord.id)).all()
+    try:
+        records=validate_sheet_scope(doc,job,records)
+    except ValueError as exc:
+        raise BatchConflict(str(exc)) from exc
     if len(records)!=batch.record_count:
         raise BatchConflict("source record count changed")
     already=set(db.scalars(select(ClaimEntry.extracted_record_id).where(ClaimEntry.batch_id==batch.id)).all())

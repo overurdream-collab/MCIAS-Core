@@ -205,3 +205,25 @@ def test_g4_excel_approved_claims_only_end_to_end():
         assert db.query(ClaimEntry).count()==1
         assert db.scalar(select(ClaimEntry)).source_locator["index"]==1
     engine.dispose()
+
+def test_g4_excel_attestation_change_blocks_resume():
+    """Changed worksheet classifications cannot silently alter a staged batch."""
+    engine=create_engine("sqlite+pysqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    with Session(engine,expire_on_commit=False) as db:
+        org,user,doc,row=_fixture(db)
+        doc.filename="claims.xlsx"
+        row.locator={"kind":"sheet","index":1,"row":2}
+        job=db.get(IngestionJob,row.job_id)
+        job.manifest={**job.manifest,"claim_sheet_attestation":{
+            "source_sha256":doc.sha256,"job_id":job.id,"approved_by":user.id,
+            "sheets":{"1":"CLAIMS"},"rationale":"synthetic reviewer"}}
+        db.commit()
+        batch=stage(db,user,doc.id)
+        job.manifest={**job.manifest,"claim_sheet_attestation":{
+            **job.manifest["claim_sheet_attestation"],"sheets":{"1":"PAYMENT"}}}
+        db.commit()
+        with pytest.raises(BatchConflict,match="no approved claims worksheets"):
+            resume(db,user,batch.id)
+        assert db.query(ClaimEntry).count()==0
+    engine.dispose()

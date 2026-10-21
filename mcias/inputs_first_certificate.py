@@ -2,6 +2,8 @@
 
 Caller evidence is NOT trusted authorization or an eligibility verdict.
 """
+from datetime import date as Date
+
 FAMILIES=("beneficiaries_eligibility","contracts_coverages","provider_tariffs_prices",
           "policies_approvals","limits_ceilings","historical_claims_records")
 
@@ -16,7 +18,11 @@ def inspect_reference_evidence(claim, evidence):
             continue
         date=claim.service_date.isoformat()
         start,end=item.get("effective_from"),item.get("effective_until")
-        temporal=type(start) is str and type(end) is str and start<=date<end
+        try:
+            temporal=(type(start) is str and type(end) is str
+                      and Date.fromisoformat(start)<=claim.service_date<Date.fromisoformat(end))
+        except ValueError:
+            temporal=False
         checks={"approval":item.get("approved") is True,
                 "coverage":item.get("coverage_complete") is True,
                 "valid_at_service_date":temporal,

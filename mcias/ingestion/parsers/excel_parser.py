@@ -11,6 +11,7 @@ def parse(data: bytes) -> Extraction:
         if len(book.worksheets) > 50:
             raise ValueError("worksheet limit exceeded")
         for sheet_index, sheet in enumerate(book.worksheets, start=1):
+            result.worksheets.append({"index":sheet_index,"name":sheet.title})
             iterator = sheet.iter_rows(values_only=False)
             header = next(iterator, None)
             if not header:

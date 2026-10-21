@@ -50,3 +50,14 @@ def test_non_excel_keeps_existing_rows():
     doc,job,records=fixture()
     doc.filename="claims.csv"
     assert validate_sheet_scope(doc,job,records)==records
+
+def test_malformed_locator_is_rejected_not_crashed():
+    doc,job,records=fixture()
+    records[0].locator=None
+    with pytest.raises(ValueError,match="invalid Excel source locator"):
+        validate_sheet_scope(doc,job,records)
+
+def test_empty_scope_never_authorizes_claims():
+    doc,job,records=fixture({"1":"PAYMENT","2":"PAYMENT","3":"SUMMARY"})
+    with pytest.raises(ValueError,match="no approved claims worksheets"):
+        validate_sheet_scope(doc,job,records)

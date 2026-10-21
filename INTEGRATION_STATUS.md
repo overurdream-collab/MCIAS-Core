@@ -74,3 +74,9 @@ The integration branch is a **staging branch**, not a released application.
 - `66d6b1d04ac138f232bfa7dd1643e253ec708de1`: updated prior fail-closed test expectation for the new approval requirement.
 - `12fdc83d32149ffc231c57659ac83206bef3f142`: added synthetic G4 import regression: one claims row + payment + summary; asserts only the claims row is staged/imported. Test execution on the new HEAD is pending CI.
 - No live production data, no deployment, no merge. Still open: cross-tenant/role approval API security tests, immutable approval storage hardening, reference completeness, Shared Audit integration, human review and final reports E2E.
+
+## Approval segregation and attestation-change regression — 2026-10-22
+- Verified all four workflows G1–G7/G8/G9/Enterprise **PASS** on SHA `db8e6621c9a0a3155c6ed97f5620b34f2bbae80e`.
+- `4236e80cf18730466726e777343ddf12f1f530e7`: worksheet approval now checks the original `source_ingested` audit event and refuses same-actor approval or absent provenance. This enforces distinct uploader/reviewer identities in addition to both permissions. It does not replace formal independent security review.
+- `03441dc6b0c1843596d9550f4955379760154def`: synthetic test confirms changing approved sheet labels after G4 staging blocks resume instead of silently importing another sheet.
+- CI on these new commits is not yet verified. Approval audit-log and manifest persistence still need concurrent PostgreSQL verification, and full six-reference audit → Shared Audit → human review → reporting E2E remains open. No merge or deployment.

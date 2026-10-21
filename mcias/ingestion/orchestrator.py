@@ -38,8 +38,13 @@ def ingest(db, store, organization_id: str, actor_id: str, filename: str, data: 
         scan(data)
         extraction = isolated_parse(identify(data, filename), data)
         result = review(extraction)
+        sheet_names = {sheet["index"]: sheet["name"] for sheet in extraction.worksheets}
         for record in extraction.records:
-            db.add(ExtractedSourceRecord(job_id=job.id, locator=locator_dict(record.locator), values=record.values, confidence=round(record.confidence*100)))
+            locator = locator_dict(record.locator)
+            if locator["kind"] == "sheet":
+                locator["sheet_name"] = sheet_names[locator["index"]]
+                locator["source_sha256"] = digest
+            db.add(ExtractedSourceRecord(job_id=job.id, locator=locator, values=record.values, confidence=round(record.confidence*100)))
         for issue in extraction.quarantined:
             db.add(QuarantineItem(job_id=job.id, reason=issue["reason"], locator=issue["locator"]))
         job.manifest = manifest(extraction)

@@ -31,6 +31,10 @@ def stage(db,actor,document_id):
         raise BatchConflict("source extraction incomplete or quarantined")
     if db.scalar(select(QuarantineItem.id).where(QuarantineItem.job_id==job.id)):
         raise BatchConflict("source has quarantine items")
+    # XLSX may contain PAYMENT and SUMMARY sheets with claim-shaped columns.
+    # Until sheet-type attestation is implemented, never stage an untrusted workbook.
+    if doc.filename.lower().endswith((".xlsx", ".xlsm", ".xls")):
+        raise BatchConflict("XLSX claims sheet classification is not yet attested")
     existing=db.scalar(select(ClaimBatch).where(ClaimBatch.organization_id==actor.organization_id,
                                                 ClaimBatch.ingestion_document_id==doc.id))
     if existing:

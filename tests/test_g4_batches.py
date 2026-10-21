@@ -175,3 +175,33 @@ def test_g4_rejects_unattested_excel_workbook_before_stage():
             stage(db, user, doc.id)
         assert db.query(ClaimEntry).count() == 0
     engine.dispose()
+
+def test_g4_excel_approved_claims_only_end_to_end():
+    """A classified workbook imports claims but never payment or summary rows."""
+    engine=create_engine("sqlite+pysqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    with Session(engine,expire_on_commit=False) as db:
+        org,user,doc,row=_fixture(db)
+        doc.filename="monthly.xlsx"
+        row.locator={"kind":"sheet","index":1,"row":2}
+        db.add(ExtractedSourceRecord(job_id=row.job_id,
+            locator={"kind":"sheet","index":2,"row":2},
+            values={"total":"99999","payment":"yes"},confidence=100))
+        db.add(ExtractedSourceRecord(job_id=row.job_id,
+            locator={"kind":"sheet","index":3,"row":2},
+            values={"total":"88888","summary":"yes"},confidence=100))
+        job=db.get(IngestionJob,row.job_id)
+        job.manifest={**job.manifest,"claim_sheet_attestation":{
+            "source_sha256":doc.sha256,"job_id":job.id,"approved_by":user.id,
+            "sheets":{"1":"CLAIMS","2":"PAYMENT","3":"SUMMARY"},
+            "rationale":"synthetic independent reviewer approval"}}
+        db.commit()
+        batch=stage(db,user,doc.id)
+        assert batch.record_count==1
+        assert len(preview(db,user,batch.id)["rows"])==1
+        result=resume(db,user,batch.id)
+        assert result["status"]=="imported"
+        assert result["imported_count"]==1
+        assert db.query(ClaimEntry).count()==1
+        assert db.scalar(select(ClaimEntry)).source_locator["index"]==1
+    engine.dispose()

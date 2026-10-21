@@ -66,3 +66,11 @@ The integration branch is a **staging branch**, not a released application.
 - Validator requires explicit per-sheet CLAIMS/PAYMENT/SUMMARY/OTHER labels, source SHA, extraction job ID, approver identity, full observed sheet coverage, and clean CAI-01 read-only preflight. Payment and summary rows are excluded from selected claims; malformed/missing scope fails closed.
 - **Security boundary:** the validator does not prove the approver identity or authorization. A protected, auditable approval API and persistent attestation lifecycle are not implemented. Accordingly the XLSX G4 stage gate **remains closed**; no user-supplied manifest may bypass it. No claims totals are computed from unapproved sheets.
 - CI for these two commits is pending verification; the earlier four-workflow green result belongs only to the prior SHA. No main merge, deployment, or original repository edits.
+
+## G4 Excel approval and staging integration — 2026-10-22
+- On SHA `c8229f836a1fa4c160ea73ae2321fec99b469b8e`, all four GitHub workflows (G1–G7, G8, G9, Enterprise) were observed PASS.
+- `29fc3b1818d82549edaa373b34c4a2ba858f4e7c`: wired source-bound worksheet validation into G4 stage/preview/resume, preserving existing CSV behavior. Batch count and imported rows now include only explicitly approved CLAIMS worksheets; PAYMENT/SUMMARY excluded.
+- `b13079288ddeee94cd703a4565bff18aea06a40e`: added tenant-scoped worksheet approval endpoint requiring both `claims.import` and `ingestion.review`, complete extraction, no quarantine, immutable approval once recorded, and append-only audit log event. This is a first integration, not independent security certification.
+- `66d6b1d04ac138f232bfa7dd1643e253ec708de1`: updated prior fail-closed test expectation for the new approval requirement.
+- `12fdc83d32149ffc231c57659ac83206bef3f142`: added synthetic G4 import regression: one claims row + payment + summary; asserts only the claims row is staged/imported. Test execution on the new HEAD is pending CI.
+- No live production data, no deployment, no merge. Still open: cross-tenant/role approval API security tests, immutable approval storage hardening, reference completeness, Shared Audit integration, human review and final reports E2E.

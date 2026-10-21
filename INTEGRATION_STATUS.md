@@ -108,3 +108,11 @@ The integration branch is a **staging branch**, not a released application.
 - `59051f73c7633ce6ff573183c9b6e40aba04c39a`: corrected temporal certificate to parse ISO dates rather than lexicographically compare arbitrary strings.
 - `1613763830e2cb16641e7b3463a56ec48d2e331d`: added malformed-date and reversed-date synthetic regressions.
 - CI for these newest commits not yet confirmed. Full DB-backed six-family attestation and G5→G6→G7 integration still blocked; no merge or deployment.
+
+## G4 completed-batch scope integrity — 2026-10-22
+- Resumed at HEAD `82b3b96d691f18789d876055a61dd3933ba8d8f9`. G1–G7/G8/G9 were in progress on that exact SHA at the initial check. Earlier SHA `1613763830e2cb16641e7b3463a56ec48d2e331d` had G1–G7/G8/G9 PASS, Enterprise still in progress.
+- Inspected G4 source and found an early `imported` return in `resume()` that bypassed worksheet attestation/source revalidation for completed batches. This could conceal a later altered scope on an idempotent resume.
+- `2d3f07796e027d89e078708b684f82407dae6d3f` adds source SHA and sheet scope revalidation before completed-batch return.
+- `22f870167f65df9a92883f34dfc92b9819f0b443` adds a synthetic regression: repeated resume succeeds while unchanged, then rejects a changed sheet classification without adding entries.
+- This detects tampering on resume, but **does not establish database-enforced immutability** of JSON manifest or cryptographically signed attestation. Dedicated PostgreSQL concurrency and API role tests still required.
+- New HEAD CI is pending; no merge, deployment or original repo mutation.

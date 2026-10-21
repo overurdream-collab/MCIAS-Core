@@ -111,6 +111,11 @@ def approve_worksheets(document_id: str, payload: WorksheetApproval,
         raise HTTPException(409,"source already staged; approval immutable")
     if job.manifest.get("claim_sheet_attestation"):
         raise HTTPException(409,"worksheet approval already exists")
+    source_event=db.scalar(select(AuditLog).where(AuditLog.action=="source_ingested",
+        AuditLog.resource_type=="ingestion_document",AuditLog.resource_id==doc.id)
+        .order_by(AuditLog.id.desc()))
+    if source_event is None or source_event.actor_id==actor.id:
+        raise HTTPException(409,"independent worksheet reviewer required")
     records=db.scalars(select(ExtractedSourceRecord).where(ExtractedSourceRecord.job_id==job.id)).all()
     attestation={"source_sha256":doc.sha256,"job_id":job.id,
                  "approved_by":actor.id,"sheets":payload.sheets,"rationale":payload.rationale}

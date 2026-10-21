@@ -1,11 +1,16 @@
 """Tenant-isolated G4 batch and claim API."""
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
+from pydantic import BaseModel, Field
+from sqlalchemy import func
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 from mcias.app import get_db
 from mcias.auth import resolve_user
 from mcias.tenant import require_organization
 from mcias.models_claims import ClaimBatch, ClaimEntry, ClaimAttachment
+from mcias.models_ingestion import IngestionDocument, IngestionJob, ExtractedSourceRecord, QuarantineItem
+from mcias.models import AuditLog
+from mcias.claim_sheet_scope import validate_sheet_scope
 from mcias.claim_batches import BatchConflict, stage, preview, resume, attach
 
 router=APIRouter(prefix="/api/v1/claims",tags=["claims"])
@@ -78,3 +83,47 @@ def link_attachment(claim_id:str,document_id:str,authorization:str|None=Header(d
     actor=_actor(db,authorization,"claims.import")
     item=_run(db,lambda:attach(db,actor,claim_id,document_id))
     return {"id":item.id,"claim_id":item.claim_id,"document_sha256":item.document_sha256}
+
+class WorksheetApproval(BaseModel):
+    sheets: dict[str, str] = Field(min_length=1, max_length=50)
+    rationale: str = Field(min_length=10, max_length=1000)
+
+@router.post("/documents/{document_id}/approve-worksheets")
+def approve_worksheets(document_id: str, payload: WorksheetApproval,
+                       authorization: str | None=Header(default=None),
+                       db: Session=Depends(get_db)):
+    actor=_actor(db,authorization,"claims.import")
+    from mcias.tenant import require_organization
+    require_organization(db,actor,actor.organization_id,"ingestion.review")
+    doc=db.get(IngestionDocument,document_id)
+    if doc is None or doc.organization_id!=actor.organization_id:
+        raise HTTPException(404,"document not found")
+    if not doc.filename.lower().endswith((".xlsx",".xlsm",".xls")) or doc.status!="extracted":
+        raise HTTPException(409,"extracted Excel document required")
+    job=db.scalar(select(IngestionJob).where(IngestionJob.document_id==doc.id,
+        IngestionJob.organization_id==actor.organization_id).order_by(IngestionJob.created_at.desc()).with_for_update())
+    if job is None or job.status!="extracted" or not job.manifest.get("complete"):
+        raise HTTPException(409,"extraction not complete")
+    if db.scalar(select(QuarantineItem.id).where(QuarantineItem.job_id==job.id)):
+        raise HTTPException(409,"source quarantine unresolved")
+    if db.scalar(select(ClaimBatch.id).where(ClaimBatch.ingestion_document_id==doc.id,
+        ClaimBatch.organization_id==actor.organization_id)):
+        raise HTTPException(409,"source already staged; approval immutable")
+    if job.manifest.get("claim_sheet_attestation"):
+        raise HTTPException(409,"worksheet approval already exists")
+    records=db.scalars(select(ExtractedSourceRecord).where(ExtractedSourceRecord.job_id==job.id)).all()
+    attestation={"source_sha256":doc.sha256,"job_id":job.id,
+                 "approved_by":actor.id,"sheets":payload.sheets,"rationale":payload.rationale}
+    job.manifest={**job.manifest,"claim_sheet_attestation":attestation}
+    try:
+        approved=validate_sheet_scope(doc,job,records)
+    except ValueError as exc:
+        db.rollback()
+        raise HTTPException(409,str(exc)) from exc
+    db.add(AuditLog(actor_id=actor.id,action="claim_worksheets_approved",
+        resource_type="ingestion_document",resource_id=doc.id,
+        details={"sha256":doc.sha256,"job_id":job.id,"sheets":payload.sheets,
+                 "rationale":payload.rationale,"claims_count":len(approved)}))
+    db.commit()
+    return {"document_id":doc.id,"job_id":job.id,"approved_claim_rows":len(approved),
+            "status":"APPROVED_FOR_G4_STAGING"}

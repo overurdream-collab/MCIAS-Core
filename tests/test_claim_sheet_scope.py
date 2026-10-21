@@ -61,3 +61,20 @@ def test_empty_scope_never_authorizes_claims():
     doc,job,records=fixture({"1":"PAYMENT","2":"PAYMENT","3":"SUMMARY"})
     with pytest.raises(ValueError,match="no approved claims worksheets"):
         validate_sheet_scope(doc,job,records)
+
+def test_inventory_requires_classification_of_empty_sheet():
+    doc,job,records=fixture()
+    job.manifest["worksheets"]=[
+        {"index":1,"name":"Claims"},{"index":2,"name":"Payments"},
+        {"index":3,"name":"Summary"},{"index":4,"name":"Empty"}]
+    with pytest.raises(ValueError,match="unclassified workbook worksheet"):
+        validate_sheet_scope(doc,job,records)
+    job.manifest["claim_sheet_attestation"]["sheets"]["4"]="OTHER"
+    assert [r.id for r in validate_sheet_scope(doc,job,records)]==["r1"]
+
+def test_duplicate_inventory_index_blocks():
+    doc,job,records=fixture()
+    job.manifest["worksheets"]=[{"index":1,"name":"Claims"},
+        {"index":1,"name":"Other"}]
+    with pytest.raises(ValueError,match="unclassified workbook worksheet"):
+        validate_sheet_scope(doc,job,records)

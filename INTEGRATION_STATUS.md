@@ -101,3 +101,10 @@ The integration branch is a **staging branch**, not a released application.
 - New `4286f275144b453ba59585e50b8eee6124dd1826`: test of the endpoint with a synthetic imported claim, all six families HOLD without references, and cross-tenant 404.
 - These new commits require their **own** CI results before any PASS claim. No main merge, original test2 changes, deployment, or production data.
 - Remaining: independently verifiable six-family approved/complete temporal references; trusted coverage attestation; G5 and Shared Audit integration; G6 human decisions; G7 final four KPIs and five classifications; PostgreSQL 16 end-to-end and browser acceptance.
+
+## CI inspection and temporal validity hardening — 2026-10-22
+- Verified latest resumption HEAD `2c11815e4e0b86aca3bdb8cb26c360642524f289`; G1–G7, G8, G9 were **success**, Enterprise still running at check time.
+- Investigated earlier G1–G7 failure on `4286f275144b453ba59585e50b8eee6124dd1826`: postgres-integration and dependency-audit passed; unit job failed solely at `tests/test_operational_controls.py::test_middleware_returns_429_retry_after_and_ignores_forwarded_headers` (observed 200 instead of expected 429), with 370 passed, 19 skipped. A subsequent run on `2c11815e4` passed. No test weakening or speculative rate-limiter patch.
+- `59051f73c7633ce6ff573183c9b6e40aba04c39a`: corrected temporal certificate to parse ISO dates rather than lexicographically compare arbitrary strings.
+- `1613763830e2cb16641e7b3463a56ec48d2e331d`: added malformed-date and reversed-date synthetic regressions.
+- CI for these newest commits not yet confirmed. Full DB-backed six-family attestation and G5→G6→G7 integration still blocked; no merge or deployment.

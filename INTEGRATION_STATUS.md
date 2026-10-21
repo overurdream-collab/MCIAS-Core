@@ -141,3 +141,10 @@ The integration branch is a **staging branch**, not a released application.
 - `f1b62010f72b1a1a6ad28d58e3fc57ab6d01606f`: G4 rejects a supplied row sheet name or SHA that disagrees with the workbook inventory and document fingerprint.
 - `793d78b5e70b4e838a5bc54478e9048432958758`: two synthetic mismatch regression tests.
 - Compatibility caveat: older extracted rows lacking the new optional locator keys remain supported. The row does not yet persist its approval acceptance state; attestation still resides in mutable JSON and needs independent PostgreSQL hardening. New CI not yet verified. No merge/deployment.
+
+## Integration acceptance pivot — 2026-10-22
+- Verified `ffd892addd22a6b0b2fbdec7e5392071599024c3` has **all four CI workflows successful on the same SHA** (G1–G7, G8, G9, Enterprise).
+- Inspected existing `audit_service.py` and `reporting_g7.py`. G5 already requires a verified institutional policy grant, while G7 can safely freeze a held/unapproved imported batch without fabricating financial approvals. These engines are reused, not duplicated.
+- `dac51e3cc2b79275d950a24adf77e28ab14be303` added a synthetic integration regression for G4 import → G3 HOLD_INPUTS → G7 frozen held-only report; `c031a16ba9a7d37c1d10ac68f47dae0144d086ce` made its fixture self-contained.
+- Expected assertions: one imported claim, six reference statuses, no approved claims, zero payable, held claim, stable report fingerprint. This is **not** a full G2 Excel→G5→Shared Audit→G6→G7 acceptance test, and is not PostgreSQL 16 proof.
+- CI for new integration test is pending verification. No merges or deployment.

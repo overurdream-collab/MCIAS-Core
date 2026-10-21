@@ -93,3 +93,11 @@ The integration branch is a **staging branch**, not a released application.
 - `a06f7abae02a4ef4c0fb515de45cb25ea86fc4d2` introduces read-only tenant-scoped G3 probe for active beneficiary enrollment, approved contract and matching tariff at service date; it never treats record presence as proof that institutional coverage is complete.
 - `3ec39eebf8a03253188020f8855ba61cfc8c52e0` adds a synthetic SQLite tenant-isolation test with different tariff amounts for two organizations, plus explicit HOLD for the remaining three unintegrated families.
 - This probe always returns HOLD_INPUTS, is not yet G5-wired, and does not assert ineligibility. No six-reference completeness attestation, Shared Audit, or E2E approval yet. New commit CI unverified.
+
+## Verified resumption and gap register — 2026-10-22
+- Resumption base HEAD: `c316e7638b2b7da7b7def947a1a0fdf0abf93642`. Confirmed four GitHub Actions workflows all completed **success** on this exact SHA: G1–G7 run 39691593253, G8 39691593197, G9 39691593184, Enterprise 39691593123. Draft PR #1 remains open and unmerged.
+- Existing completed work was inspected and **not duplicated**: Excel worksheet approval and G4 selection, six-family advisory certificate, read-only DB-backed G3 probe, and existing synthetic tests.
+- New `70e3ec39bcf02fb60fe0be5f5713f25f98c387b6`: exposed `GET /api/v1/claims/entries/{claim_id}/inputs-first` with existing claims.read authorization, organization-scoped ClaimEntry lookup, and the existing read-only G3 probe. Does not grant eligibility or financial authorization.
+- New `4286f275144b453ba59585e50b8eee6124dd1826`: test of the endpoint with a synthetic imported claim, all six families HOLD without references, and cross-tenant 404.
+- These new commits require their **own** CI results before any PASS claim. No main merge, original test2 changes, deployment, or production data.
+- Remaining: independently verifiable six-family approved/complete temporal references; trusted coverage attestation; G5 and Shared Audit integration; G6 human decisions; G7 final four KPIs and five classifications; PostgreSQL 16 end-to-end and browser acceptance.

@@ -116,3 +116,10 @@ The integration branch is a **staging branch**, not a released application.
 - `22f870167f65df9a92883f34dfc92b9819f0b443` adds a synthetic regression: repeated resume succeeds while unchanged, then rejects a changed sheet classification without adding entries.
 - This detects tampering on resume, but **does not establish database-enforced immutability** of JSON manifest or cryptographically signed attestation. Dedicated PostgreSQL concurrency and API role tests still required.
 - New HEAD CI is pending; no merge, deployment or original repo mutation.
+
+## Resumption: worksheet locator malformed-input hardening — 2026-10-22
+- Inspected branch `integration/core-baseline` at `c905736c6d415d9b74a826c306be2de57c601bbd`. All four workflows **PASS on that exact SHA**: G1–G7 #39692599315, G8 #39692599341, G9 #39692599307, Enterprise #39692599291. Draft PR #1 remains unmerged.
+- Reused existing worksheet scope validator and preflight; no duplicate parser or importer. Found a malformed `locator=None` would cause an uncaught AttributeError during sheet-index collection rather than a controlled validation rejection.
+- `8ebb9c3fdc299b438482ce0cd519b88280e4d622`: reject non-dictionary locators with a controlled ValueError before accessing fields.
+- `566b81efa5b34885b3088bc6d760b744f85fe655`: add two synthetic regressions for malformed locator and payment/summary-only workbook. These newest tests have not yet been independently confirmed PASS.
+- Remaining known issues: full workbook sheet inventory (including sheets with zero extracted records) not yet attested; durable DB-enforced approval immutability; six trusted reference families; G5→Shared Audit→G6→G7 end-to-end, PG16/browser acceptance. No main merge or deployment.

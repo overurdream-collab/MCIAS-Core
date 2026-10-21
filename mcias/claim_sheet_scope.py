@@ -36,6 +36,13 @@ def validate_sheet_scope(document, job, records):
         inventory_indexes = [item["index"] for item in inventory]
         if len(inventory_indexes) != len(set(inventory_indexes)) or set(mapped) != set(inventory_indexes):
             raise ValueError("unclassified workbook worksheet")
+        names = {item["index"]: item["name"] for item in inventory}
+        for record in records:
+            locator = record.locator
+            if locator.get("source_sha256") is not None and locator["source_sha256"] != document.sha256:
+                raise ValueError("Excel row source fingerprint mismatch")
+            if locator.get("sheet_name") is not None and locator["sheet_name"] != names.get(locator.get("index")):
+                raise ValueError("Excel row sheet name mismatch")
     if (inventory is None and set(mapped) != observed) or not observed.issubset(set(mapped)) or any(v not in VALID_KINDS for v in mapped.values()):
         raise ValueError("unclassified or invalid worksheet")
     selected = {index for index, kind in mapped.items() if kind == "CLAIMS"}

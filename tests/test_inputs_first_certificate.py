@@ -40,3 +40,16 @@ def test_unapproved_policy_blocks():
     e=approved()
     e["policies_approvals"]["approved"]=False
     assert inspect_reference_evidence(CLAIM,e)["status"]=="HOLD_INPUTS"
+
+def test_malformed_date_never_passes_temporal_validation():
+    e=approved()
+    e["contracts_coverages"]["effective_from"]="2026-99-99"
+    result=inspect_reference_evidence(CLAIM,e)
+    assert result["status"]=="HOLD_INPUTS"
+    assert "valid_at_service_date" in result["references"][1]["missing"]
+
+def test_reversed_period_never_passes():
+    e=approved()
+    e["provider_tariffs_prices"]["effective_from"]="2027-01-01"
+    e["provider_tariffs_prices"]["effective_until"]="2026-01-01"
+    assert inspect_reference_evidence(CLAIM,e)["status"]=="HOLD_INPUTS"

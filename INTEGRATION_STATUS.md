@@ -148,3 +148,11 @@ The integration branch is a **staging branch**, not a released application.
 - `dac51e3cc2b79275d950a24adf77e28ab14be303` added a synthetic integration regression for G4 import → G3 HOLD_INPUTS → G7 frozen held-only report; `c031a16ba9a7d37c1d10ac68f47dae0144d086ce` made its fixture self-contained.
 - Expected assertions: one imported claim, six reference statuses, no approved claims, zero payable, held claim, stable report fingerprint. This is **not** a full G2 Excel→G5→Shared Audit→G6→G7 acceptance test, and is not PostgreSQL 16 proof.
 - CI for new integration test is pending verification. No merges or deployment.
+
+## Verified baseline and fail-closed G5 negative-path continuation — 2026-10-22
+- Verified actual branch HEAD `73651ef3f8b2e5762c4e0a33d29070c9d43653b6`, Draft PR #1 open/unmerged. Four workflows **PASS on exact HEAD**: G1–G7 #39693925521, G8 #39693925558, G9 #39693925504, Enterprise #39693925522.
+- Inspected CI workflow `.github/workflows/ci.yml` and its unit job logs: `381 passed, 19 skipped, 1 warning`. PostgreSQL integration job succeeded, but its explicit test list **does not include** `tests/test_g4_g3_g7_held_integration.py`. This test runs as SQLite in unit suite and is **not** PostgreSQL end-to-end evidence.
+- Inspected existing `mcias/audit_service.py`, `mcias/g3_reference_probe.py`, `mcias/claims_api.py`, and held-claim integration test. G5 requires `VerifiedPolicyAuthorization`, active tenant policy registry and grant; no full six-reference enforcement or full-path E2E is demonstrated in MCIAS-Core.
+- `2c42e5b29fd2a396eebea4b8af1bf61f84f44973`: extended the existing G4→G3→G7 held-claim regression (without duplicating it) to assert G5 refuses a financial run without trusted institutional policy authorization and creates no audit snapshot. This is a **negative safety test**, not proof of authorized audit or G6 flow.
+- New test and this status update need their own CI verification. No original `test2` modification, merge, deploy or production data.
+- Next blockers in priority order: PostgreSQL 16 synthetic G2 Excel→G4→G3→G5→Shared Audit→G6→G7 integration; server-trusted six-family historical coverage completeness; human review and audit event lineage; Windows browser pilot. Do not mislabel green unit CI as these acceptance results.

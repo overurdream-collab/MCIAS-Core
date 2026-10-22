@@ -1,0 +1,281 @@
+"""G4 source-to-batch, idempotent resume, attachment and tenant isolation."""
+from sqlalchemy import create_engine,select
+from sqlalchemy.orm import Session
+from mcias.models import Base, Organization, User
+from mcias.models_ingestion import IngestionDocument, IngestionJob, ExtractedSourceRecord
+from mcias.models_claims import ClaimEntry,ClaimAttachment
+from mcias.claim_batches import stage,resume,preview,attach,BatchConflict
+from mcias.claim_normalization import normalize
+from datetime import datetime,timezone
+import pytest
+
+def _fixture(db,valid=True):
+    org=Organization(name="G4 synthetic")
+    user=User(username="g4-tester",password_hash="fixture")
+    db.add_all([org,user]);db.flush()
+    user.organization_id=org.id
+    from mcias.models import SourceFile
+    source=SourceFile(sha256="a"*64,original_filename="claims.csv",storage_key="synthetic-claims")
+    db.add(source);db.flush()
+    doc=IngestionDocument(organization_id=org.id,source_id=source.id,
+        sha256="a"*64,filename="claims.csv",status="extracted")
+    db.add(doc);db.flush()
+    job=IngestionJob(organization_id=org.id,document_id=doc.id,status="extracted",
+        manifest={"complete":True})
+    db.add(job);db.flush()
+    values={"claim_reference":"C1","beneficiary_token":"opaque","provider_code":"P",
+        "service_code":"S","service_date":"2026-10-10","claimed_amount":"99.1250","currency":"YER"}
+    if not valid:values["claimed_amount"]="bad"
+    row=ExtractedSourceRecord(job_id=job.id,locator={"kind":"row","index":1,"row":2},
+        values=values,confidence=100)
+    db.add(row);db.commit()
+    return org,user,doc,row
+
+def test_g4_stage_resume_idempotent():
+    engine=create_engine("sqlite+pysqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    with Session(engine,expire_on_commit=False) as db:
+        org,user,doc,row=_fixture(db)
+        batch=stage(db,user,doc.id)
+        assert stage(db,user,doc.id).id==batch.id
+        assert preview(db,user,batch.id)["rows"][0]["valid"]
+        first=resume(db,user,batch.id)
+        assert first["status"]=="imported" and first["imported_count"]==1
+        assert resume(db,user,batch.id)["imported_count"]==1
+        entry=db.scalar(select(ClaimEntry))
+        assert entry.source_locator["row"]==2
+        assert entry.source_values["claim_reference"]=="C1"
+        assert str(entry.claimed_amount)=="99.1250"
+        link=attach(db,user,entry.id,doc.id)
+        assert attach(db,user,entry.id,doc.id).id==link.id
+        assert db.query(ClaimAttachment).count()==1
+    engine.dispose()
+
+def test_g4_invalid_source_row_requires_review():
+    engine=create_engine("sqlite+pysqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    with Session(engine,expire_on_commit=False) as db:
+        org,user,doc,row=_fixture(db,valid=False)
+        batch=stage(db,user,doc.id)
+        result=resume(db,user,batch.id)
+        assert result["status"]=="review_required"
+        assert result["imported_count"]==0
+        assert result["rejected"][0]["locator"]["row"]==2
+    engine.dispose()
+
+def test_g4_tenant_cannot_stage_foreign_document():
+    engine=create_engine("sqlite+pysqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    with Session(engine,expire_on_commit=False) as db:
+        org,user,doc,row=_fixture(db)
+        other=Organization(name="Other")
+        stranger=User(username="other-g4",password_hash="fixture")
+        db.add_all([other,stranger]);db.flush()
+        stranger.organization_id=other.id;db.commit()
+        with pytest.raises(BatchConflict,match="not accessible"):
+            stage(db,stranger,doc.id)
+    engine.dispose()
+
+def test_g4_resume_in_bounded_chunks():
+    engine=create_engine("sqlite+pysqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    with Session(engine,expire_on_commit=False) as db:
+        org,user,doc,row=_fixture(db)
+        for i in range(1,25):
+            db.add(ExtractedSourceRecord(job_id=row.job_id,
+                locator={"kind":"row","index":i+1,"row":i+2},
+                values={**row.values,"claim_reference":f"C{i+1}"},confidence=100))
+        db.commit()
+        batch=stage(db,user,doc.id)
+        assert batch.record_count==25
+        first=resume(db,user,batch.id,chunk_size=10)
+        assert first["status"]=="importing" and first["imported_count"]==10
+        db.expire_all()
+        second=resume(db,user,batch.id,chunk_size=10)
+        assert second["imported_count"]==20
+        final=resume(db,user,batch.id,chunk_size=10)
+        assert final["status"]=="imported" and final["imported_count"]==25
+        assert resume(db,user,batch.id,chunk_size=10)["imported_count"]==25
+        assert db.query(ClaimEntry).count()==25
+    engine.dispose()
+
+def test_g4_crash_before_commit_recovers_without_duplicates(monkeypatch):
+    engine=create_engine("sqlite+pysqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    with Session(engine,expire_on_commit=False) as db:
+        org,user,doc,row=_fixture(db)
+        batch=stage(db,user,doc.id)
+        original_flush=db.flush
+        calls=[0]
+        def fail_once(*args,**kwargs):
+            calls[0]+=1
+            if calls[0]==1:
+                raise RuntimeError("simulated process interruption before checkpoint")
+            return original_flush(*args,**kwargs)
+        monkeypatch.setattr(db,"flush",fail_once)
+        with pytest.raises(RuntimeError,match="interruption"):
+            resume(db,user,batch.id,chunk_size=1)
+        db.rollback()
+        monkeypatch.setattr(db,"flush",original_flush)
+        assert db.query(ClaimEntry).count()==0
+        recovered=resume(db,user,batch.id,chunk_size=1)
+        assert recovered["status"]=="imported"
+        assert recovered["imported_count"]==1
+        assert db.query(ClaimEntry).count()==1
+    engine.dispose()
+
+def test_g4_large_synthetic_batch_checkpoints():
+    engine=create_engine("sqlite+pysqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    with Session(engine,expire_on_commit=False) as db:
+        org,user,doc,row=_fixture(db)
+        for i in range(1,1001):
+            db.add(ExtractedSourceRecord(job_id=row.job_id,
+                locator={"kind":"row","row":i+2},
+                values={**row.values,"claim_reference":f"C{i+1}"},confidence=100))
+        db.commit()
+        batch=stage(db,user,doc.id)
+        assert batch.record_count==1001
+        for expected in (200,400,600,800,1000,1001):
+            result=resume(db,user,batch.id,chunk_size=200)
+            assert result["imported_count"]==expected
+        assert result["status"]=="imported"
+        assert db.query(ClaimEntry).count()==1001
+    engine.dispose()
+
+def test_g4_cross_tenant_attachment_denied():
+    engine=create_engine("sqlite+pysqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    with Session(engine,expire_on_commit=False) as db:
+        org,user,doc,row=_fixture(db)
+        batch=stage(db,user,doc.id)
+        resume(db,user,batch.id)
+        entry=db.scalar(select(ClaimEntry))
+        other=Organization(name="G4 foreign")
+        stranger=User(username="g4-stranger",password_hash="fixture")
+        db.add_all([other,stranger]);db.flush()
+        stranger.organization_id=other.id
+        db.commit()
+        with pytest.raises(BatchConflict,match="not accessible"):
+            attach(db,stranger,entry.id,doc.id)
+        with pytest.raises(BatchConflict,match="not accessible"):
+            attach(db,user,entry.id,"unknown")
+    engine.dispose()
+
+
+def test_g4_rejects_unattested_excel_workbook_before_stage():
+    """Payment/summary worksheets must never be counted as claims by shape alone."""
+    engine = create_engine("sqlite+pysqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    with Session(engine, expire_on_commit=False) as db:
+        org, user, doc, row = _fixture(db)
+        doc.filename = "monthly_claims.xlsx"
+        db.commit()
+        with pytest.raises(BatchConflict, match="trusted claim sheet attestation required"):
+            stage(db, user, doc.id)
+        assert db.query(ClaimEntry).count() == 0
+    engine.dispose()
+
+def test_g4_excel_approved_claims_only_end_to_end():
+    """A classified workbook imports claims but never payment or summary rows."""
+    engine=create_engine("sqlite+pysqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    with Session(engine,expire_on_commit=False) as db:
+        org,user,doc,row=_fixture(db)
+        doc.filename="monthly.xlsx"
+        row.locator={"kind":"sheet","index":1,"row":2}
+        db.add(ExtractedSourceRecord(job_id=row.job_id,
+            locator={"kind":"sheet","index":2,"row":2},
+            values={"total":"99999","payment":"yes"},confidence=100))
+        db.add(ExtractedSourceRecord(job_id=row.job_id,
+            locator={"kind":"sheet","index":3,"row":2},
+            values={"total":"88888","summary":"yes"},confidence=100))
+        job=db.get(IngestionJob,row.job_id)
+        job.manifest={**job.manifest,"claim_sheet_attestation":{
+            "source_sha256":doc.sha256,"job_id":job.id,"approved_by":user.id,
+            "sheets":{"1":"CLAIMS","2":"PAYMENT","3":"SUMMARY"},
+            "rationale":"synthetic independent reviewer approval"}}
+        db.commit()
+        batch=stage(db,user,doc.id)
+        assert batch.record_count==1
+        assert len(preview(db,user,batch.id)["rows"])==1
+        result=resume(db,user,batch.id)
+        assert result["status"]=="imported"
+        assert result["imported_count"]==1
+        assert db.query(ClaimEntry).count()==1
+        assert db.scalar(select(ClaimEntry)).source_locator["index"]==1
+    engine.dispose()
+
+def test_g4_excel_attestation_change_blocks_resume():
+    """Changed worksheet classifications cannot silently alter a staged batch."""
+    engine=create_engine("sqlite+pysqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    with Session(engine,expire_on_commit=False) as db:
+        org,user,doc,row=_fixture(db)
+        doc.filename="claims.xlsx"
+        row.locator={"kind":"sheet","index":1,"row":2}
+        job=db.get(IngestionJob,row.job_id)
+        job.manifest={**job.manifest,"claim_sheet_attestation":{
+            "source_sha256":doc.sha256,"job_id":job.id,"approved_by":user.id,
+            "sheets":{"1":"CLAIMS"},"rationale":"synthetic reviewer"}}
+        db.commit()
+        batch=stage(db,user,doc.id)
+        job.manifest={**job.manifest,"claim_sheet_attestation":{
+            **job.manifest["claim_sheet_attestation"],"sheets":{"1":"PAYMENT"}}}
+        db.commit()
+        with pytest.raises(BatchConflict,match="no approved claims worksheets"):
+            resume(db,user,batch.id)
+        assert db.query(ClaimEntry).count()==0
+    engine.dispose()
+
+def test_inputs_first_endpoint_reads_only_own_claim(monkeypatch):
+    """An imported claim exposes six reference statuses, not a financial verdict."""
+    from fastapi import HTTPException
+    from mcias import claims_api
+    engine=create_engine("sqlite+pysqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    with Session(engine,expire_on_commit=False) as db:
+        org,user,doc,row=_fixture(db)
+        batch=stage(db,user,doc.id)
+        resume(db,user,batch.id)
+        entry=db.scalar(select(ClaimEntry))
+        monkeypatch.setattr(claims_api,"_actor",lambda db,auth,permission:user)
+        result=claims_api.claim_inputs_first(entry.id,authorization=None,db=db)
+        assert result["status"]=="HOLD_INPUTS"
+        assert len(result["references"])==6
+        assert result["semantics"]=="DATABASE_EVIDENCE_ONLY_NO_INELIGIBILITY_OR_FINANCIAL_DECISION"
+        assert all(x["status"]=="HOLD" for x in result["references"])
+        other=Organization(name="G3 isolated")
+        stranger=User(username="g3-isolated",password_hash="fixture")
+        db.add_all([other,stranger]);db.flush()
+        stranger.organization_id=other.id
+        db.commit()
+        monkeypatch.setattr(claims_api,"_actor",lambda db,auth,permission:stranger)
+        with pytest.raises(HTTPException) as exc:
+            claims_api.claim_inputs_first(entry.id,authorization=None,db=db)
+        assert exc.value.status_code==404
+    engine.dispose()
+
+def test_imported_excel_resume_rechecks_approved_scope():
+    """An idempotent completed batch must not accept a mutated approval."""
+    engine=create_engine("sqlite+pysqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    with Session(engine,expire_on_commit=False) as db:
+        org,user,doc,row=_fixture(db)
+        doc.filename="monthly.xlsx"
+        row.locator={"kind":"sheet","index":1,"row":2}
+        job=db.get(IngestionJob,row.job_id)
+        job.manifest={**job.manifest,"claim_sheet_attestation":{
+            "source_sha256":doc.sha256,"job_id":job.id,"approved_by":user.id,
+            "sheets":{"1":"CLAIMS"},"rationale":"synthetic"}}
+        db.commit()
+        batch=stage(db,user,doc.id)
+        assert resume(db,user,batch.id)["status"]=="imported"
+        assert resume(db,user,batch.id)["status"]=="imported"
+        job.manifest={**job.manifest,"claim_sheet_attestation":{
+            **job.manifest["claim_sheet_attestation"],"sheets":{"1":"PAYMENT"}}}
+        db.commit()
+        with pytest.raises(BatchConflict,match="no approved claims worksheets"):
+            resume(db,user,batch.id)
+        assert db.query(ClaimEntry).count()==1
+    engine.dispose()

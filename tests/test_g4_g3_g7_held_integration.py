@@ -10,6 +10,10 @@ from mcias.models_ingestion import IngestionDocument, IngestionJob, ExtractedSou
 from mcias.claim_batches import stage, resume
 from mcias.g3_reference_probe import inspect_g3_claim
 from mcias.reporting_g7 import freeze_batch, fingerprint
+from mcias.audit_service import run_audit
+from mcias.audit_engine import PolicyBlocked
+from mcias.models_audit import AuditSnapshot
+import pytest
 def _fixture(db):
     org=Organization(name="synthetic-integration")
     actor=User(username="synthetic-integration-user",password_hash="fixture")
@@ -46,6 +50,10 @@ def test_imported_claim_with_missing_references_freezes_held_report():
         assert certificate["status"]=="HOLD_INPUTS"
         assert len(certificate["references"])==6
         assert all(x["status"]=="HOLD" for x in certificate["references"])
+        # G5 must not accept a financial execution without trusted policy authorization.
+        with pytest.raises(PolicyBlocked, match="verified institutional policy authorization required"):
+            run_audit(db, actor, claims[0].id, None)
+        assert db.scalar(select(AuditSnapshot.id).where(AuditSnapshot.claim_id==claims[0].id)) is None
         dataset,summary=freeze_batch(batch,claims,[],[],[])
         assert summary["total_claims"]==1
         totals=summary["by_currency"]["YER"]
